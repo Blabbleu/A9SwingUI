@@ -17,31 +17,33 @@ public class DbManager {
         return DriverManager.getConnection(URL, USER, PASSWORD);
     }
 
+    // ---------------------------------------------------------------------
+    // DROP ALL OBJECTS
+    // ---------------------------------------------------------------------
     public static void dropAllObjects() throws SQLException {
         try (Connection conn = getConnection();
              Statement st = conn.createStatement()) {
 
             String[] blocks = {
-
-                    // Drop views if they exist
+                    // Drop views
                     """
-                BEGIN
-                    EXECUTE IMMEDIATE 'DROP VIEW V_DAILY_SALES';
-                EXCEPTION WHEN OTHERS THEN NULL;
-                END;
-                """,
+                    BEGIN
+                        EXECUTE IMMEDIATE 'DROP VIEW V_DAILY_SALES';
+                    EXCEPTION WHEN OTHERS THEN NULL;
+                    END;
+                    """,
                     """
-                BEGIN
-                    EXECUTE IMMEDIATE 'DROP VIEW V_CUSTOMER_PURCHASE_HISTORY';
-                EXCEPTION WHEN OTHERS THEN NULL;
-                END;
-                """,
+                    BEGIN
+                        EXECUTE IMMEDIATE 'DROP VIEW V_CUSTOMER_PURCHASE_HISTORY';
+                    EXCEPTION WHEN OTHERS THEN NULL;
+                    END;
+                    """,
                     """
-                BEGIN
-                    EXECUTE IMMEDIATE 'DROP VIEW V_PRODUCT_INVENTORY_STATUS';
-                EXCEPTION WHEN OTHERS THEN NULL;
-                END;
-                """,
+                    BEGIN
+                        EXECUTE IMMEDIATE 'DROP VIEW V_PRODUCT_INVENTORY_STATUS';
+                    EXCEPTION WHEN OTHERS THEN NULL;
+                    END;
+                    """,
 
                     // Drop indexes
                     "BEGIN EXECUTE IMMEDIATE 'DROP INDEX ix_inv_emp';       EXCEPTION WHEN OTHERS THEN NULL; END;",
@@ -63,8 +65,14 @@ public class DbManager {
                     "BEGIN EXECUTE IMMEDIATE 'DROP TABLE Suppliers CASCADE CONSTRAINTS';        EXCEPTION WHEN OTHERS THEN NULL; END;",
                     "BEGIN EXECUTE IMMEDIATE 'DROP TABLE Customers CASCADE CONSTRAINTS';        EXCEPTION WHEN OTHERS THEN NULL; END;",
                     "BEGIN EXECUTE IMMEDIATE 'DROP TABLE Employees CASCADE CONSTRAINTS';        EXCEPTION WHEN OTHERS THEN NULL; END;",
-                    // Purge recyclebin
-                    "PURGE RECYCLEBIN"
+
+                    // Purge recycle bin safely
+                    """
+                    BEGIN
+                        EXECUTE IMMEDIATE 'PURGE RECYCLEBIN';
+                    EXCEPTION WHEN OTHERS THEN NULL;
+                    END;
+                    """
             };
 
             for (String block : blocks) {
@@ -73,6 +81,9 @@ public class DbManager {
         }
     }
 
+    // ---------------------------------------------------------------------
+    // CREATE SCHEMA (normalized, no Subtotal stored)
+    // ---------------------------------------------------------------------
     public static void createSchema() throws SQLException {
         try (Connection conn = getConnection();
              Statement st = conn.createStatement()) {
@@ -176,7 +187,7 @@ public class DbManager {
                 )
                 """);
 
-            // TRANSACTION DETAILS (no Subtotal stored)
+            // TRANSACTION DETAILS (normalized, no stored Subtotal)
             st.execute("""
                 CREATE TABLE TransactionDetails (
                     TransactionDetailID NUMBER        PRIMARY KEY,
@@ -251,9 +262,77 @@ public class DbManager {
             st.execute("CREATE INDEX ix_pay_txn      ON Payments(TransactionID)");
             st.execute("CREATE INDEX ix_inv_prod     ON InventoryTransactions(ProductID)");
             st.execute("CREATE INDEX ix_inv_emp      ON InventoryTransactions(EmployeeID)");
+
+            // -----------------------------------------------------------------
+            // Views (adapted from A4, WITHOUT stored Subtotal)
+            // -----------------------------------------------------------------
+
+            // View 1: Daily sales
+            st.execute("""
+                CREATE OR REPLACE VIEW V_DAILY_SALES AS
+                SELECT
+                    TRUNC(t.DateTime) AS SalesDate,
+                    COUNT(DISTINCT t.TransactionID) AS TransactionCount,
+                    SUM(td.Quantity) AS TotalItemsSold,
+                    SUM( (td.SalePrice - td.Discount) * td.Quantity ) AS TotalRevenue,
+                    ROUND(
+                        SUM( (td.SalePrice - td.Discount) * td.Quantity )
+                        / NULLIF(COUNT(DISTINCT t.TransactionID), 0),
+                        2
+                    ) AS AvgTransactionValue
+                FROM Transactions t
+                JOIN TransactionDetails td
+                    ON t.TransactionID = td.TransactionID
+                WHERE t.Status = 'Completed'
+                GROUP BY TRUNC(t.DateTime)
+                """);
+
+            // View 2: Customer purchase history
+            st.execute("""
+                CREATE OR REPLACE VIEW V_CUSTOMER_PURCHASE_HISTORY AS
+                SELECT
+                    c.CustomerID,
+                    c.Name AS CustomerName,
+                    COUNT(t.TransactionID) AS TotalTransactions,
+                    NVL(SUM(t.TotalAmount), 0) AS TotalSpent,
+                    MAX(t.DateTime) AS LastPurchaseDate
+                FROM Customers c
+                LEFT JOIN Transactions t
+                    ON t.CustomerID = c.CustomerID
+                   AND t.Status = 'Completed'
+                GROUP BY c.CustomerID, c.Name
+                """);
+
+            // View 3: Product inventory status
+            st.execute("""
+                CREATE OR REPLACE VIEW V_PRODUCT_INVENTORY_STATUS AS
+                SELECT
+                    p.ProductID,
+                    p.SKU,
+                    p.Name AS ProductName,
+                    p.Category,
+                    p.StockQuantity AS CurrentStock,
+                    NVL(SUM(CASE WHEN it.ChangeQty > 0 THEN it.ChangeQty END), 0) AS TotalRestocked,
+                    NVL(SUM(CASE WHEN it.ChangeQty < 0 THEN ABS(it.ChangeQty) END), 0) AS TotalSoldOrRemoved,
+                    NVL(SUM(it.ChangeQty), 0) AS NetChange,
+                    ROUND(p.Price - p.Cost, 2) AS PerUnitProfitMargin,
+                    CASE
+                        WHEN p.StockQuantity <= 10 THEN 'RESTOCK'
+                        ELSE 'OK'
+                    END AS StockStatus
+                FROM Products p
+                LEFT JOIN InventoryTransactions it
+                    ON it.ProductID = p.ProductID
+                GROUP BY
+                    p.ProductID, p.SKU, p.Name, p.Category,
+                    p.StockQuantity, p.Price, p.Cost
+                """);
         }
     }
 
+    // ---------------------------------------------------------------------
+    // POPULATE SAMPLE DATA
+    // ---------------------------------------------------------------------
     public static void populateSampleData() throws SQLException {
         try (Connection conn = getConnection();
              Statement st = conn.createStatement()) {
@@ -330,7 +409,7 @@ public class DbManager {
                     (3, SYSTIMESTAMP, 2, 1, 31.00, 'Completed')
                     """);
 
-                // TRANSACTION DETAILS (no Subtotal)
+                // TRANSACTION DETAILS
                 st.execute("""
                     INSERT INTO TransactionDetails
                         (TransactionDetailID, TransactionID, ProductID, Quantity, SalePrice, Discount)
@@ -404,9 +483,8 @@ public class DbManager {
     }
 
     // ---------------------------------------------------------------------
-// INSERT HELPERS FOR FORMS
-// ---------------------------------------------------------------------
-
+    // INSERT HELPERS FOR FORMS
+    // ---------------------------------------------------------------------
     public static void insertSupplier(
             int supplierId,
             String name,
@@ -422,7 +500,7 @@ public class DbManager {
         """;
 
         try (Connection conn = getConnection();
-             java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
+             PreparedStatement ps = conn.prepareStatement(sql)) {
 
             ps.setInt(1, supplierId);
             ps.setString(2, name);
@@ -450,7 +528,7 @@ public class DbManager {
         """;
 
         try (Connection conn = getConnection();
-             java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
+             PreparedStatement ps = conn.prepareStatement(sql)) {
 
             ps.setInt(1, customerId);
             ps.setString(2, name);
@@ -480,7 +558,7 @@ public class DbManager {
         """;
 
         try (Connection conn = getConnection();
-             java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
+             PreparedStatement ps = conn.prepareStatement(sql)) {
 
             ps.setInt(1, productId);
             ps.setString(2, sku);
@@ -490,7 +568,7 @@ public class DbManager {
             ps.setDouble(6, cost);
 
             if (supplierId == null) {
-                ps.setNull(7, java.sql.Types.INTEGER);
+                ps.setNull(7, Types.INTEGER);
             } else {
                 ps.setInt(7, supplierId);
             }
@@ -501,8 +579,42 @@ public class DbManager {
         }
     }
 
+    // ---------------------------------------------------------------------
+    // GENERIC QUERY HELPER FOR REPORTS
+    // ---------------------------------------------------------------------
+    public static String runQuery(String sql) throws SQLException {
+        StringBuilder sb = new StringBuilder();
+        try (Connection conn = getConnection();
+             Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery(sql)) {
 
-    // Simple manual test
+            ResultSetMetaData md = rs.getMetaData();
+            int cols = md.getColumnCount();
+
+            // Header
+            for (int i = 1; i <= cols; i++) {
+                sb.append(md.getColumnLabel(i));
+                if (i < cols) sb.append(" | ");
+            }
+            sb.append("\n");
+            sb.append("-".repeat(80)).append("\n");
+
+            // Rows
+            while (rs.next()) {
+                for (int i = 1; i <= cols; i++) {
+                    Object val = rs.getObject(i);
+                    sb.append(val == null ? "NULL" : val.toString());
+                    if (i < cols) sb.append(" | ");
+                }
+                sb.append("\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    // ---------------------------------------------------------------------
+    // Test
+    // ---------------------------------------------------------------------
     public static void main(String[] args) {
         try {
             dropAllObjects();
@@ -511,6 +623,9 @@ public class DbManager {
             System.out.println("Created schema.");
             populateSampleData();
             System.out.println("Populated sample data.");
+
+            System.out.println("V_DAILY_SALES:");
+            System.out.println(runQuery("SELECT * FROM V_DAILY_SALES"));
         } catch (SQLException e) {
             e.printStackTrace();
         }

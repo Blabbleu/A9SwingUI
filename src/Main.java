@@ -30,11 +30,19 @@ public class Main {
         JPanel insertPanel = buildInsertPanel(logArea);
         tabs.addTab("Insert Data", insertPanel);
 
+        // Tab 3: Reports (Views + analytics)
+        JPanel reportsPanel = buildReportsPanel(logArea);
+        tabs.addTab("Reports", reportsPanel);
+
+        // Tab 4: Query Tables
+        JPanel queryPanel = buildQueryPanel(logArea);
+        tabs.addTab("Query Tables", queryPanel);
+
         // Layout
         frame.setLayout(new BorderLayout());
         frame.add(tabs, BorderLayout.CENTER);
         frame.add(logScroll, BorderLayout.SOUTH);
-        logScroll.setPreferredSize(new Dimension(frame.getWidth(), 200));
+        logScroll.setPreferredSize(new Dimension(frame.getWidth(), 220));
 
         frame.setVisible(true);
     }
@@ -45,13 +53,15 @@ public class Main {
     private static JPanel buildAdminPanel(JTextArea logArea) {
         JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT));
 
-        JButton btnDrop     = new JButton("DROP ALL OBJECTS");
-        JButton btnCreate   = new JButton("CREATE SCHEMA");
+        JButton btnDrop = new JButton("DROP ALL OBJECTS");
+        JButton btnCreate = new JButton("CREATE SCHEMA");
         JButton btnPopulate = new JButton("POPULATE DATA");
+        JButton btnExit = new JButton("EXIT");
 
         panel.add(btnDrop);
         panel.add(btnCreate);
         panel.add(btnPopulate);
+        panel.add(btnExit);
 
         btnDrop.addActionListener(e -> {
             append(logArea, "Dropping all objects...");
@@ -83,11 +93,13 @@ public class Main {
             }
         });
 
+        btnExit.addActionListener(e -> System.exit(0));
+
         return panel;
     }
 
     // ---------------------------------------------------------------------
-    // INSERT TAB (forms for Supplier, Customer, Product)
+    // Forms Tabs - Manually Insert Data
     // ---------------------------------------------------------------------
     private static JPanel buildInsertPanel(JTextArea logArea) {
         JPanel panel = new JPanel();
@@ -102,17 +114,17 @@ public class Main {
         return panel;
     }
 
-    // =========== SUPPLIER FORM ===========================================
+    // Supplier
     private static JPanel buildSupplierForm(JTextArea logArea) {
         JPanel form = new JPanel(new GridLayout(0, 2, 8, 8));
         form.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
 
-        JTextField tfId      = new JTextField();
-        JTextField tfName    = new JTextField();
+        JTextField tfId = new JTextField();
+        JTextField tfName = new JTextField();
         JTextField tfContact = new JTextField();
         JTextField tfAddress = new JTextField();
-        JTextField tfEmail   = new JTextField();
-        JTextField tfPhone   = new JTextField();
+        JTextField tfEmail = new JTextField();
+        JTextField tfPhone = new JTextField();
 
         form.add(new JLabel("SupplierID (number):"));
         form.add(tfId);
@@ -141,7 +153,7 @@ public class Main {
                 String phone = tfPhone.getText().trim();
 
                 DbManager.insertSupplier(id, name, contact, address, email, phone);
-                append(logArea, "Inserted Supplier ID " + id);
+                append(logArea, "Inserted Supplier ID " + id + "\n");
             } catch (NumberFormatException ex) {
                 append(logArea, "ERROR: SupplierID must be a number.\n");
             } catch (SQLException ex) {
@@ -152,17 +164,17 @@ public class Main {
         return form;
     }
 
-    // =========== CUSTOMER FORM ===========================================
+    // Customer
     private static JPanel buildCustomerForm(JTextArea logArea) {
         JPanel form = new JPanel(new GridLayout(0, 2, 8, 8));
         form.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
 
-        JTextField tfId      = new JTextField();
-        JTextField tfName    = new JTextField();
-        JTextField tfPhone   = new JTextField();
-        JTextField tfEmail   = new JTextField();
+        JTextField tfId = new JTextField();
+        JTextField tfName = new JTextField();
+        JTextField tfPhone = new JTextField();
+        JTextField tfEmail = new JTextField();
         JTextField tfAddress = new JTextField();
-        JTextField tfPoints  = new JTextField("0");
+        JTextField tfPoints = new JTextField("0");
 
         form.add(new JLabel("CustomerID (number):"));
         form.add(tfId);
@@ -191,7 +203,7 @@ public class Main {
                 int points = Integer.parseInt(tfPoints.getText().trim());
 
                 DbManager.insertCustomer(id, name, phone, email, address, points);
-                append(logArea, "Inserted Customer ID " + id);
+                append(logArea, "Inserted Customer ID " + id + "\n");
             } catch (NumberFormatException ex) {
                 append(logArea, "ERROR: ID and Points must be numbers.\n");
             } catch (SQLException ex) {
@@ -202,19 +214,19 @@ public class Main {
         return form;
     }
 
-    // =========== PRODUCT FORM ============================================
+    // Product
     private static JPanel buildProductForm(JTextArea logArea) {
         JPanel form = new JPanel(new GridLayout(0, 2, 8, 8));
         form.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
 
-        JTextField tfId        = new JTextField();
-        JTextField tfSku       = new JTextField();
-        JTextField tfName      = new JTextField();
-        JTextField tfCategory  = new JTextField();
-        JTextField tfPrice     = new JTextField();
-        JTextField tfCost      = new JTextField();
-        JTextField tfSupplier  = new JTextField(); // optional
-        JTextField tfStock     = new JTextField("0");
+        JTextField tfId = new JTextField();
+        JTextField tfSku = new JTextField();
+        JTextField tfName = new JTextField();
+        JTextField tfCategory = new JTextField();
+        JTextField tfPrice = new JTextField();
+        JTextField tfCost = new JTextField();
+        JTextField tfSupplier = new JTextField(); // optional
+        JTextField tfStock = new JTextField("0");
 
         form.add(new JLabel("ProductID (number):"));
         form.add(tfId);
@@ -250,7 +262,7 @@ public class Main {
                 int stock = Integer.parseInt(tfStock.getText().trim());
 
                 DbManager.insertProduct(id, sku, name, category, price, cost, supplierId, stock);
-                append(logArea, "Inserted Product ID " + id);
+                append(logArea, "Inserted Product ID " + id + "\n");
             } catch (NumberFormatException ex) {
                 append(logArea, "ERROR: Numeric fields must be valid numbers.\n");
             } catch (SQLException ex) {
@@ -259,6 +271,217 @@ public class Main {
         });
 
         return form;
+    }
+
+    // ---------------------------------------------------------------------
+    // REPORTS TAB
+    // ---------------------------------------------------------------------
+    private static JPanel buildReportsPanel(JTextArea logArea) {
+        JPanel panel = new JPanel();
+        panel.setLayout(new GridLayout(0, 1, 8, 8));
+        panel.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
+
+        JButton btnDailySales = new JButton("Daily Sales (V_DAILY_SALES)");
+        JButton btnCustomerHistory = new JButton("Customer Purchase History (V_CUSTOMER_PURCHASE_HISTORY)");
+        JButton btnInventoryStatus = new JButton("Product Inventory Status (V_PRODUCT_INVENTORY_STATUS)");
+        JButton btnRevenueByProduct = new JButton("Product Revenue (Query)");
+
+        panel.add(new JLabel("Run analytical reports:"));
+        panel.add(btnDailySales);
+        panel.add(btnCustomerHistory);
+        panel.add(btnInventoryStatus);
+        panel.add(btnRevenueByProduct);
+
+        btnDailySales.addActionListener(e -> {
+            String sql = """
+                    SELECT
+                        SalesDate,
+                        TransactionCount,
+                        TotalItemsSold,
+                        TotalRevenue,
+                        AvgTransactionValue
+                    FROM V_DAILY_SALES
+                    ORDER BY SalesDate
+                    """;
+            runReport(logArea, "Daily Sales (V_DAILY_SALES)", sql);
+        });
+
+        btnCustomerHistory.addActionListener(e -> {
+            String sql = """
+                    SELECT
+                        CustomerID,
+                        CustomerName,
+                        TotalTransactions,
+                        TotalSpent,
+                        LastPurchaseDate
+                    FROM V_CUSTOMER_PURCHASE_HISTORY
+                    ORDER BY TotalSpent DESC
+                    """;
+            runReport(logArea, "Customer Purchase History (V_CUSTOMER_PURCHASE_HISTORY)", sql);
+        });
+
+        btnInventoryStatus.addActionListener(e -> {
+            String sql = """
+                    SELECT
+                        ProductID,
+                        SKU,
+                        ProductName,
+                        Category,
+                        CurrentStock,
+                        TotalRestocked,
+                        TotalSoldOrRemoved,
+                        NetChange,
+                        PerUnitProfitMargin,
+                        StockStatus
+                    FROM V_PRODUCT_INVENTORY_STATUS
+                    ORDER BY ProductID
+                    """;
+            runReport(logArea, "Product Inventory Status (V_PRODUCT_INVENTORY_STATUS)", sql);
+        });
+
+        btnRevenueByProduct.addActionListener(e -> {
+            // Adapted from A4 Q10, but using computed subtotal
+            String sql = """
+                    SELECT
+                        p.SKU,
+                        p.Name,
+                        SUM( (td.SalePrice - td.Discount) * td.Quantity ) AS Revenue
+                    FROM TransactionDetails td
+                    JOIN Transactions t
+                        ON t.TransactionID = td.TransactionID
+                    JOIN Products p
+                        ON p.ProductID = td.ProductID
+                    WHERE t.Status = 'Completed'
+                    GROUP BY p.SKU, p.Name
+                    ORDER BY Revenue DESC
+                    """;
+            runReport(logArea, "Product Revenue (Query)", sql);
+        });
+
+        return panel;
+    }
+
+    private static JPanel buildQueryPanel(JTextArea logArea) {
+        JPanel panel = new JPanel();
+        panel.setLayout(new GridBagLayout());
+        panel.setBorder(BorderFactory.createEmptyBorder(16, 16, 16, 16));
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(8, 8, 8, 8);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        String[] tables = {
+                "Suppliers",
+                "Products",
+                "Customers",
+                "Employees",
+                "Transactions",
+                "TransactionDetails",
+                "Payments",
+                "InventoryTransactions",
+                "Discounts",
+                "DiscountProduct"
+        };
+
+        JLabel lblTable = new JLabel("Table:");
+        JComboBox<String> cbTable = new JComboBox<>(tables);
+
+        JLabel lblId = new JLabel("Find by PK (ID) (optional):");
+        JTextField tfId = new JTextField();
+
+        JButton btnViewAll = new JButton("View All");
+        JButton btnFindById = new JButton("Find by ID");
+
+        // Row 0: Table label + combo
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        panel.add(lblTable, gbc);
+        gbc.gridx = 1;
+        gbc.gridy = 0;
+        panel.add(cbTable, gbc);
+
+        // Row 1: ID label + field
+        gbc.gridx = 0;
+        gbc.gridy = 1;
+        panel.add(lblId, gbc);
+        gbc.gridx = 1;
+        gbc.gridy = 1;
+        panel.add(tfId, gbc);
+
+        // Row 2: Buttons
+        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        btnPanel.add(btnViewAll);
+        btnPanel.add(btnFindById);
+
+        gbc.gridx = 0;
+        gbc.gridy = 2;
+        gbc.gridwidth = 2;
+        panel.add(btnPanel, gbc);
+
+        // Actions
+        btnViewAll.addActionListener(e -> {
+            String table = (String) cbTable.getSelectedItem();
+            if (table == null) return;
+            String sql = "SELECT * FROM " + table;
+            runReport(logArea, "View All from " + table, sql);
+        });
+
+        btnFindById.addActionListener(e -> {
+            String table = (String) cbTable.getSelectedItem();
+            if (table == null) return;
+            String idText = tfId.getText().trim();
+            if (idText.isEmpty()) {
+                append(logArea, "Please enter an ID value to search.\n");
+                return;
+            }
+
+            String pkCol = getPkColumnName(table);
+            if (pkCol == null) {
+                append(logArea, "No PK mapping defined for table: " + table + "\n");
+                return;
+            }
+
+            // All PKs in this schema are numeric, so try parse as integer
+            int idVal;
+            try {
+                idVal = Integer.parseInt(idText);
+            } catch (NumberFormatException ex) {
+                append(logArea, "ERROR: ID must be a numeric value.\n");
+                return;
+            }
+
+            String sql = "SELECT * FROM " + table + " WHERE " + pkCol + " = " + idVal;
+            runReport(logArea, "Find by ID in " + table + " (" + pkCol + " = " + idVal + ")", sql);
+        });
+
+        return panel;
+    }
+
+    // Helper: PK column name per table
+    private static String getPkColumnName(String table) {
+        return switch (table) {
+            case "Suppliers" -> "SupplierID";
+            case "Products" -> "ProductID";
+            case "Customers" -> "CustomerID";
+            case "Employees" -> "EmployeeID";
+            case "Transactions" -> "TransactionID";
+            case "TransactionDetails" -> "TransactionDetailID";
+            case "Payments" -> "PaymentID";
+            case "InventoryTransactions" -> "InventoryTransactionID";
+            case "Discounts" -> "DiscountID";
+            case "DiscountProduct" -> "DiscountProductID";
+            default -> null;
+        };
+    }
+
+    private static void runReport(JTextArea logArea, String title, String sql) {
+        append(logArea, "\n=== REPORT: " + title + " ===");
+        try {
+            String result = DbManager.runQuery(sql);
+            append(logArea, result + "\n");
+        } catch (SQLException ex) {
+            append(logArea, "ERROR running report: " + ex.getMessage() + "\n");
+        }
     }
 
     // ---------------------------------------------------------------------
